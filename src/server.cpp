@@ -437,13 +437,31 @@ void handle_request(int sock_fd, const std::string& http_request, std::optional<
     body = compress_body(body);
     std::cout << "body: " << body << std::endl;
     response_headers["Content-Length"] = std::to_string(body.length());
-  }
 
-  response = build_http_response(first_line, response_headers, body);
 
-  // Send the response message
-  if (send(sock_fd, response.c_str(), response.size(), 0) < 0) {
-    std::cerr << "Failed to send response" << std::endl;
+    std::stringstream response;
+
+    response << first_line << "\r\n";
+
+    for (const auto& header : headers) {
+      response << header.first << ": " << header.second << "\r\n";
+    }
+
+    response << "\r\n";
+
+    std::string initial_string = response.str();
+
+    send(sock_fd, initial_string.c_str(), initial_string.size(), 0);
+    send(sock_fd, body.c_str(), body.size(), 0);
+  } else {
+    response = build_http_response(first_line, response_headers, body);
+
+    std::cout << response << std::endl;
+
+    // Send the response message
+    if (send(sock_fd, response.c_str(), response.size(), 0) < 0) {
+      std::cerr << "Failed to send response" << std::endl;
+    }
   }
 }
 
