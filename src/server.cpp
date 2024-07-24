@@ -10,6 +10,7 @@
 #include <sstream>
 #include <vector>
 #include <unordered_map>
+#include <thread>
 
 int create_server_socket(int port) {
   int server_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -212,11 +213,18 @@ int main(int argc, char **argv) {
       (socklen_t *) &client_addr_len
   );
 
-  std::string http_request = receive_data(sock_fd, client_addr, client_addr_len);
+  auto f = [](int sock_fd, struct sockaddr_in client_addr, socklen_t client_addr_len) {
 
-  handle_request(sock_fd, http_request);
+    std::string http_request = receive_data(sock_fd, client_addr, client_addr_len);
+    if (!http_request.empty())
+      handle_request(sock_fd, http_request);
+    close(sock_fd);
+  };
 
-  close(sock_fd);
+  std::thread t1(f, sock_fd, client_addr, client_addr_len);
+
+  t1.join();
+
   close(server_fd);
 
   return 0;
