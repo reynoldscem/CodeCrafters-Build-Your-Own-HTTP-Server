@@ -83,6 +83,34 @@ std::string receive_data(int sockfd, sockaddr_in& client_addr, socklen_t& client
   }
 }
 
+void handle_request(int sock_fd, const std::string& http_request) {
+  if (http_request.empty()) {
+    std::cerr << "Failed to extract request target" << std::endl;
+    return;
+  }
+
+  std::string request_target = extract_request_target(http_request);
+
+  if (request_target.empty()) {
+    std::cerr << "Failed to extract request target" << std::endl;
+    return;
+  }
+
+  std::cout << "Request Target: " << request_target << std::endl;
+
+  // Construct the response message
+  std::string response;
+  if (request_target == "/") {
+    response = "HTTP/1.1 200 OK\r\n\r\n";
+  } else {
+    response = "HTTP/1.1 404 Not Found\r\n\r\n";
+  }
+
+  // Send the response message
+  if (send(sock_fd, response.c_str(), response.size(), 0) < 0) {
+    std::cerr << "Failed to send response" << std::endl;
+  }
+}
 
 int main(int argc, char **argv) {
   std::cout << std::unitbuf;
@@ -115,28 +143,11 @@ int main(int argc, char **argv) {
       (socklen_t *) &client_addr_len
   );
 
-
   std::string http_request = receive_data(sock_fd, client_addr, client_addr_len);
 
-  if (http_request.empty()) {
-      std::cerr << "Failed to extract request target" << std::endl;
-  } else {
-    std::string request_target = extract_request_target(http_request);
+  handle_request(sock_fd, http_request);
 
-    if (!request_target.empty()) {
-      std::cout << "Request Target: " << request_target << std::endl;
-
-      const char* message;
-      if (request_target == "/")
-        message = "HTTP/1.1 200 OK\r\n\r\n";
-      else
-        message = "HTTP/1.1 404 Not Found\r\n\r\n";
-
-      send(sock_fd, message, strlen(message), 0);
-    }
-
-  }
-
+  close(sock_fd);
   close(server_fd);
 
   return 0;
