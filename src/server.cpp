@@ -15,6 +15,10 @@
 #include <optional>
 #include <CLI/CLI.hpp>
 
+#include <filesystem>
+
+namespace fs = std::filesystem;
+
 int create_server_socket(int port) {
   int server_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (server_fd < 0) {
@@ -88,12 +92,21 @@ std::string receive_data(int sockfd, sockaddr_in& client_addr, socklen_t& client
   }
 }
 
-std::string extract_echo_message(const std::string& request_target) {
-  const std::string prefix = "/echo/";
+std::string extract_second_level_route(const std::string& prefix, const std::string& request_target) {
   if (request_target.substr(0, prefix.length()) == prefix) {
     return request_target.substr(prefix.length());
   }
   return "";
+}
+
+std::string extract_echo_message(const std::string& request_target) {
+  const std::string prefix = "/echo/";
+  return extract_second_level_route(prefix, request_target);
+}
+
+std::string extract_filename(const std::string& request_target) {
+  const std::string prefix = "/files/";
+  return extract_second_level_route(prefix, request_target);
 }
 
 std::unordered_map<std::string, std::string> extract_headers(const std::string& http_request) {
@@ -137,7 +150,57 @@ std::unordered_map<std::string, std::string> extract_headers(const std::string& 
   return headers;
 }
 
-void handle_request(int sock_fd, const std::string& http_request) {
+// forward decl
+bool is_readable(const std::string& path);
+
+std::string build_files_response(std::string directory, std::string filename) {
+  if (!is_readable(directory)) {
+    std::cout << std::filesystem::current_path() << "is unreadable" << std::endl;
+    return "HTTP/1.1 500 Directory unreadable\r\n\r\n";
+  }
+
+  // Join directory and filename
+  fs::path file_path = fs::path(directory) / filename;
+
+  // Check if file exists and is readable
+  if (!fs::exists(file_path) || !fs::is_regular_file(file_path)) {
+    // Return 404 Not Found if file does not exist
+    return "HTTP/1.1 404 Not Found\r\n\r\n";
+  }
+
+  // Read file contents
+  std::ifstream file(file_path, std::ios::binary | std::ios::ate);
+  if (!file.is_open()) {
+    // Return 404 Not Found if file cannot be opened
+    return "HTTP/1.1 404 Not Found\r\n\r\n";
+  }
+
+  // Get file size
+  std::streamsize file_size = file.tellg();
+  file.seekg(0, std::ios::beg);
+
+  // Read file contents into a vector of bytes
+  std::vector<char> file_contents(file_size);
+  if (!file.read(file_contents.data(), file_size)) {
+    // Return 404 Not Found if file cannot be read
+    return "HTTP/1.1 404 Not Found\r\n\r\n";
+  }
+
+  // Construct HTTP response
+  std::stringstream response;
+  response << "HTTP/1.1 200 OK\r\n";
+  response << "Content-Length: " << file_size << "\r\n";
+  response << "Content-Type: application/octet-stream\r\n"; // Set the content type to application/octet-stream
+  response << "\r\n"; // End of headers
+
+  // Convert the response stream to a string and append the file contents
+  std::string response_str = response.str();
+  response_str.insert(response_str.end(), file_contents.begin(), file_contents.end());
+
+  return response_str;
+}
+
+void handle_request(int sock_fd, const std::string& http_request, std::optional<std::string> maybe_directory) {
   if (http_request.empty()) {
     std::cerr << "Failed to extract request target" << std::endl;
     return;
@@ -169,6 +232,16 @@ void handle_request(int sock_fd, const std::string& http_request) {
                "Content-Type: text/plain\r\n"
                "Content-Length: " + std::to_string(message.length()) + "\r\n\r\n" +
                message;
+  } else if (request_target.find("/files/") == 0) {
+    if (maybe_directory) {
+      std::string directory = *maybe_directory;
+      std::cout << "Directory: " << directory << std::endl;
+
+      std::string filename = extract_filename(request_target);
+      response = build_files_response(directory, filename);
+    } else {
+      response = "HTTP/1.1 500 Directory not set on server\r\n\r\n";
+    }
   } else if (request_target == "/user-agent") {
     std::string message = headers["User-Agent"];
     response = "HTTP/1.1 200 OK\r\n"
@@ -185,21 +258,28 @@ void handle_request(int sock_fd, const std::string& http_request) {
   }
 }
 
+bool is_readable(const std::string& path) {
+  try {
+    fs::path dir_path(path);
+
+    return fs::exists(dir_path) && fs::is_directory(dir_path);
+  } catch (const fs::filesystem_error& e) {
+      std::cerr << "Filesystem error: " << e.what() << std::endl;
+  }
+
+  return false;
+}
+
 int main(int argc, char **argv) {
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
 
   CLI::App app{"Simple Webserver"};
 
-  std::optional<std::string> directory;
-  app.add_option("--directory", directory, "Directory from which to serve files");
+  std::optional<std::string> maybe_directory;
+  app.add_option("--directory", maybe_directory, "Directory from which to serve files");
 
   CLI11_PARSE(app, argc, argv);
-
-  if (directory)
-      std::cout << "Directory: " << *directory << std::endl;
-  else
-      std::cout << "Directory unset!" << std::endl;
 
   int port = 4221;
   int backlog = 5;
@@ -222,11 +302,11 @@ int main(int argc, char **argv) {
 
   std::cout << "Waiting for a client to connect...\n";
 
-  auto f = [](int sock_fd, struct sockaddr_in client_addr, socklen_t client_addr_len) {
+  auto f = [maybe_directory](int sock_fd, struct sockaddr_in client_addr, socklen_t client_addr_len) {
 
     std::string http_request = receive_data(sock_fd, client_addr, client_addr_len);
     if (!http_request.empty())
-      handle_request(sock_fd, http_request);
+      handle_request(sock_fd, http_request, maybe_directory);
     close(sock_fd);
   };
 
