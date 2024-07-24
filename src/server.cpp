@@ -8,6 +8,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <sstream>
+#include <vector>
 
 std::string extract_request_target(const std::string& http_request) {
     std::istringstream request_stream(http_request);
@@ -22,14 +23,33 @@ std::string extract_request_target(const std::string& http_request) {
     return "";
 }
 
+std::string receive_data(int sockfd, sockaddr_in& client_addr, socklen_t& client_addr_len) {
+  // Initial buffer size
+  std::vector<char> buffer(1024);
+
+  while (true) {
+    ssize_t bytes_received = recvfrom(sockfd, buffer.data(), buffer.size(), 0, (struct sockaddr*)&client_addr, &client_addr_len);
+    if (bytes_received == -1) {
+      std::cerr << "Failed to receive data" << std::endl;
+      return ""; // Return empty string to indicate failure
+    }
+
+    if (static_cast<size_t>(bytes_received) < buffer.size()) {
+      buffer[bytes_received] = '\0';
+      return std::string(buffer.data()); // Return the received data as std::string
+    } else {
+        // Double the buffer size and try again
+        buffer.resize(buffer.size() * 2);
+    }
+  }
+}
+
+
 int main(int argc, char **argv) {
   // Flush after every std::cout / std::cerr
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
   
-  // You can use print statements as follows for debugging, they'll be visible when running tests.
-  std::cout << "Logs from your program will appear here!\n";
-
   int server_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (server_fd < 0) {
    std::cerr << "Failed to create server socket\n";
@@ -61,7 +81,7 @@ int main(int argc, char **argv) {
   }
   
   struct sockaddr_in client_addr;
-  int client_addr_len = sizeof(client_addr);
+  socklen_t client_addr_len = sizeof(client_addr);
   
   std::cout << "Waiting for a client to connect...\n";
   
@@ -71,15 +91,12 @@ int main(int argc, char **argv) {
       (socklen_t *) &client_addr_len
   );
 
-  char buffer[1024];
 
-  ssize_t bytes_received = recvfrom(sock_fd, buffer, sizeof(buffer) - 1, 0, (struct sockaddr*)&client_addr, (socklen_t *)&client_addr_len);
+  std::string http_request = receive_data(sock_fd, client_addr, client_addr_len);
 
-  if (bytes_received >= 1) {
-    buffer[bytes_received] = '\0';
-
-    std::string http_request(buffer);
-
+  if (http_request.empty()) {
+      std::cerr << "Failed to extract request target" << std::endl;
+  } else {
     std::string request_target = extract_request_target(http_request);
 
     if (!request_target.empty()) {
@@ -92,8 +109,6 @@ int main(int argc, char **argv) {
         message = "HTTP/1.1 404 Not Found\r\n\r\n";
 
       send(sock_fd, message, strlen(message), 0);
-    } else {
-      std::cerr << "Failed to extract request target" << std::endl;
     }
 
   }
