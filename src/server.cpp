@@ -207,12 +207,6 @@ int main(int argc, char **argv) {
 
   std::cout << "Waiting for a client to connect...\n";
 
-  int sock_fd = accept(
-      server_fd,
-      (struct sockaddr *) &client_addr,
-      (socklen_t *) &client_addr_len
-  );
-
   auto f = [](int sock_fd, struct sockaddr_in client_addr, socklen_t client_addr_len) {
 
     std::string http_request = receive_data(sock_fd, client_addr, client_addr_len);
@@ -221,9 +215,25 @@ int main(int argc, char **argv) {
     close(sock_fd);
   };
 
-  std::thread t1(f, sock_fd, client_addr, client_addr_len);
+  int sock_fd;
 
-  t1.join();
+  std::vector<std::thread> threads;
+ 
+  while (true) {
+    sock_fd = accept(
+        server_fd,
+        (struct sockaddr *) &client_addr,
+        (socklen_t *) &client_addr_len
+    );
+
+    threads.emplace_back(f, sock_fd, client_addr, client_addr_len);
+
+  }
+  for (auto& t : threads) {
+    if (t.joinable()) {
+      t.join();
+    }
+  }
 
   close(server_fd);
 
