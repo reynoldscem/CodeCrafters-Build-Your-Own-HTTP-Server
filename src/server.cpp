@@ -83,6 +83,14 @@ std::string receive_data(int sockfd, sockaddr_in& client_addr, socklen_t& client
   }
 }
 
+std::string extract_echo_message(const std::string& request_target) {
+  const std::string prefix = "/echo/";
+  if (request_target.substr(0, prefix.length()) == prefix) {
+    return request_target.substr(prefix.length());
+  }
+  return "";
+}
+
 void handle_request(int sock_fd, const std::string& http_request) {
   if (http_request.empty()) {
     std::cerr << "Failed to extract request target" << std::endl;
@@ -102,6 +110,13 @@ void handle_request(int sock_fd, const std::string& http_request) {
   std::string response;
   if (request_target == "/") {
     response = "HTTP/1.1 200 OK\r\n\r\n";
+  } else if (request_target.find("/echo/") == 0) {
+    std::string message = extract_echo_message(request_target);
+
+    response = "HTTP/1.1 200 OK\r\n"
+               "Content-Type: text/plain\r\n"
+               "Content-Length: " + std::to_string(message.length()) + "\r\n\r\n" +
+               message;
   } else {
     response = "HTTP/1.1 404 Not Found\r\n\r\n";
   }
