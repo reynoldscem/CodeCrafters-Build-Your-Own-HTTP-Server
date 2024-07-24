@@ -51,7 +51,20 @@ int main(int argc, char **argv) {
   
   std::cout << "Waiting for a client to connect...\n";
   
-  accept(server_fd, (struct sockaddr *) &client_addr, (socklen_t *) &client_addr_len);
+  int sock_fd = accept(
+      server_fd,
+      (struct sockaddr *) &client_addr,
+      (socklen_t *) &client_addr_len
+  );
+
+  char buffer[1024];
+
+  recvfrom(sock_fd, buffer, sizeof(buffer) - 1, 0, (struct sockaddr*)&client_addr, (socklen_t *)&client_addr_len);
+
+
+  const char* message = "HTTP/1.1 200 OK\r\n\r\n";
+  send(sock_fd, message, strlen(message), 0);
+
   std::cout << "Client connected\n";
   
   close(server_fd);
