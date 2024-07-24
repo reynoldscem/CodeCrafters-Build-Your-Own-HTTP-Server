@@ -201,30 +201,9 @@ std::string build_files_response(std::string directory, std::string filename) {
   return response_str;
 }
 
-void handle_request(int sock_fd, const std::string& http_request, std::optional<std::string> maybe_directory) {
-  if (http_request.empty()) {
-    std::cerr << "Failed to extract request target" << std::endl;
-    return;
-  }
-
-  auto [method, request_target] = parse_route(http_request);
-
-  auto headers = extract_headers(http_request);
-
-  for (const auto& [key, value] : headers) {
-    std::cout << key << ": " << value << std::endl;
-  }
-
-  if (request_target.empty()) {
-    std::cerr << "Failed to extract request target" << std::endl;
-    return;
-  }
-
-  std::cout << "Method: " << method << std::endl;
-  std::cout << "Request Target: " << request_target << std::endl;
-
-  // Construct the response message
+std::string handle_get_requests(const std::string& request_target, std::unordered_map<std::string, std::string> headers, std::optional<std::string> maybe_directory) {
   std::string response;
+
   if (request_target == "/") {
     response = "HTTP/1.1 200 OK\r\n\r\n";
   } else if (request_target.find("/echo/") == 0) {
@@ -250,6 +229,40 @@ void handle_request(int sock_fd, const std::string& http_request, std::optional<
                "Content-Type: text/plain\r\n"
                "Content-Length: " + std::to_string(message.length()) + "\r\n\r\n" +
                message;
+  } else {
+    response = "HTTP/1.1 404 Not Found\r\n\r\n";
+  }
+
+  return response;
+}
+
+void handle_request(int sock_fd, const std::string& http_request, std::optional<std::string> maybe_directory) {
+  if (http_request.empty()) {
+    std::cerr << "Failed to extract request target" << std::endl;
+    return;
+  }
+
+  auto [method, request_target] = parse_route(http_request);
+
+  auto headers = extract_headers(http_request);
+
+  for (const auto& [key, value] : headers) {
+    std::cout << key << ": " << value << std::endl;
+  }
+
+  if (request_target.empty()) {
+    std::cerr << "Failed to extract request target" << std::endl;
+    return;
+  }
+
+  std::cout << "Method: " << method << std::endl;
+  std::cout << "Request Target: " << request_target << std::endl;
+
+  std::string response;
+  if (method == "GET") {
+    response = handle_get_requests(request_target, headers, maybe_directory);
+  } else if (method == "POST") {
+    response = handle_get_requests(request_target, headers, maybe_directory);
   } else {
     response = "HTTP/1.1 404 Not Found\r\n\r\n";
   }
