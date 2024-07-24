@@ -178,7 +178,7 @@ void handle_request(int sock_fd, const std::string& http_request) {
 int main(int argc, char **argv) {
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
-  
+
   int port = 4221;
   int backlog = 5;
 
@@ -197,9 +197,9 @@ int main(int argc, char **argv) {
 
   struct sockaddr_in client_addr;
   socklen_t client_addr_len = sizeof(client_addr);
-  
+
   std::cout << "Waiting for a client to connect...\n";
-  
+
   int sock_fd = accept(
       server_fd,
       (struct sockaddr *) &client_addr,
