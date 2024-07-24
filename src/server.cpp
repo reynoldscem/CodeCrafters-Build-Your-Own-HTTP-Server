@@ -19,6 +19,8 @@
 
 #include <tuple>
 
+#include <zlib.h>
+
 namespace fs = std::filesystem;
 
 int create_server_socket(int port) {
@@ -312,12 +314,14 @@ std::string get_body(const std::string& http_request, const std::unordered_map<s
   }
 }
 
-void check_and_add_content_encoding(std::unordered_map<std::string, std::string>& headers,
+bool check_and_add_content_encoding(std::unordered_map<std::string, std::string>& headers,
                                     std::unordered_map<std::string, std::string>& response_headers) {
   auto it = headers.find("Accept-Encoding");
   if (it != headers.end() && it->second.find("gzip") != std::string::npos) {
     response_headers["Content-Encoding"] = "gzip";
+    return true;
   }
+  return false;
 }
 
 std::string get_first_line(const std::string& http_response) {
@@ -348,6 +352,47 @@ std::string build_http_response(
   response << body;
 
   return response.str();
+}
+
+std::string compress_body(const std::string& str, 
+                            int compressionlevel = Z_BEST_COMPRESSION)
+{
+    z_stream zs;                        // z_stream is zlib's control structure
+    memset(&zs, 0, sizeof(zs));
+
+    if (deflateInit(&zs, compressionlevel) != Z_OK)
+        throw(std::runtime_error("deflateInit failed while compressing."));
+
+    zs.next_in = (Bytef*)str.data();
+    zs.avail_in = str.size();           // set the z_stream's input
+
+    int ret;
+    char outbuffer[32768];
+    std::string outstring;
+
+    // retrieve the compressed bytes blockwise
+    do {
+        zs.next_out = reinterpret_cast<Bytef*>(outbuffer);
+        zs.avail_out = sizeof(outbuffer);
+
+        ret = deflate(&zs, Z_FINISH);
+
+        if (outstring.size() < zs.total_out) {
+            // append the block to the output string
+            outstring.append(outbuffer,
+                             zs.total_out - outstring.size());
+        }
+    } while (ret == Z_OK);
+
+    deflateEnd(&zs);
+
+    if (ret != Z_STREAM_END) {          // an error occurred that was not EOF
+        std::ostringstream oss;
+        oss << "Exception during zlib compression: (" << ret << ") " << zs.msg;
+        throw(std::runtime_error(oss.str()));
+    }
+
+    return outstring;
 }
 
 void handle_request(int sock_fd, const std::string& http_request, std::optional<std::string> maybe_directory) {
@@ -384,8 +429,15 @@ void handle_request(int sock_fd, const std::string& http_request, std::optional<
   auto response_headers = extract_headers(response);
 
   std::string first_line = get_first_line(response);
-  check_and_add_content_encoding(headers, response_headers);
+  bool compress = check_and_add_content_encoding(headers, response_headers);
   std::string body = get_body(response, response_headers);
+
+  if (compress) {
+    std::cout << "body: " << body << std::endl;
+    body = compress_body(body);
+    std::cout << "body: " << body << std::endl;
+    response_headers["Content-Length"] = std::to_string(body.length());
+  }
 
   response = build_http_response(first_line, response_headers, body);
 
