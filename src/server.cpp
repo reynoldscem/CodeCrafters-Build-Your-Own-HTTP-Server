@@ -438,12 +438,11 @@ void handle_request(int sock_fd, const std::string& http_request, std::optional<
     std::cout << "body: " << body << std::endl;
     response_headers["Content-Length"] = std::to_string(body.length());
 
-
     std::stringstream response;
 
     response << first_line << "\r\n";
 
-    for (const auto& header : headers) {
+    for (const auto& header : response_headers) {
       response << header.first << ": " << header.second << "\r\n";
     }
 
