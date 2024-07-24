@@ -7,6 +7,20 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <sstream>
+
+std::string extract_request_target(const std::string& http_request) {
+    std::istringstream request_stream(http_request);
+    std::string method, request_target, http_version;
+
+    // Parse the first line of the HTTP request
+    if (request_stream >> method >> request_target >> http_version) {
+        return request_target;
+    }
+
+    // If parsing failed, return an empty string
+    return "";
+}
 
 int main(int argc, char **argv) {
   // Flush after every std::cout / std::cerr
@@ -59,11 +73,30 @@ int main(int argc, char **argv) {
 
   char buffer[1024];
 
-  recvfrom(sock_fd, buffer, sizeof(buffer) - 1, 0, (struct sockaddr*)&client_addr, (socklen_t *)&client_addr_len);
+  ssize_t bytes_received = recvfrom(sock_fd, buffer, sizeof(buffer) - 1, 0, (struct sockaddr*)&client_addr, (socklen_t *)&client_addr_len);
 
+  if (bytes_received >= 1) {
+    buffer[bytes_received] = '\0';
 
-  const char* message = "HTTP/1.1 200 OK\r\n\r\n";
-  send(sock_fd, message, strlen(message), 0);
+    std::string http_request(buffer);
+
+    std::string request_target = extract_request_target(http_request);
+
+    if (!request_target.empty()) {
+      std::cout << "Request Target: " << request_target << std::endl;
+
+      const char* message;
+      if (request_target == "/")
+        message = "HTTP/1.1 200 OK\r\n\r\n";
+      else
+        message = "HTTP/1.1 404 Not Found\r\n\r\n";
+
+      send(sock_fd, message, strlen(message), 0);
+    } else {
+      std::cerr << "Failed to extract request target" << std::endl;
+    }
+
+  }
 
   std::cout << "Client connected\n";
   
