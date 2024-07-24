@@ -236,6 +236,82 @@ std::string handle_get_requests(const std::string& request_target, std::unordere
   return response;
 }
 
+bool save_file(std::string directory, std::string filename, std::string body) {
+  try {
+    fs::create_directories(directory);
+
+    fs::path file_path = fs::path(directory) / filename;
+
+    std::ofstream file(file_path, std::ios::binary);
+    if (!file.is_open()) {
+      std::cerr << "Failed to open file: " << file_path << std::endl;
+      return false;
+    }
+
+    file.write(body.c_str(), body.size());
+
+    if (!file) {
+      std::cerr << "Failed to write to file: " << file_path << std::endl;
+      return false;
+    }
+
+    return true;
+  } catch (const std::exception& e) {
+    std::cerr << "Exception: " << e.what() << std::endl;
+    return false;
+  }
+}
+
+std::string handle_post_requests(
+        const std::string& request_target,
+        std::unordered_map<std::string, std::string> headers,
+        std::string body,
+        std::optional<std::string> maybe_directory
+    ) {
+  std::string response;
+
+  if (request_target.find("/files/") == 0) {
+    if (maybe_directory) {
+      std::string directory = *maybe_directory;
+      std::cout << "Directory: " << directory << std::endl;
+
+      std::string filename = extract_filename(request_target);
+      if (save_file(directory, filename, body)) {
+        response = "HTTP/1.1 201 Created\r\n\r\n";
+      } else {
+        response = "HTTP/1.1 500 Couldn't save file\r\n\r\n";
+      }
+    } else {
+      response = "HTTP/1.1 500 Directory not set on server\r\n\r\n";
+    }
+  } else {
+    response = "HTTP/1.1 404 Not Found\r\n\r\n";
+  }
+
+  return response;
+}
+
+std::string get_body(const std::string& http_request, const std::unordered_map<std::string, std::string>& headers) {
+  auto it = headers.find("Content-Length");
+  if (it == headers.end()) {
+    return "";
+  }
+
+  int content_length = std::stoi(it->second);
+
+  size_t body_pos = http_request.find("\r\n\r\n");
+  if (body_pos == std::string::npos) {
+    return "";
+  }
+  body_pos += 4;
+
+  if (body_pos + content_length <= http_request.size()) {
+    return http_request.substr(body_pos, content_length);
+  } else {
+    return "";
+  }
+}
+
 void handle_request(int sock_fd, const std::string& http_request, std::optional<std::string> maybe_directory) {
   if (http_request.empty()) {
     std::cerr << "Failed to extract request target" << std::endl;
@@ -262,7 +338,8 @@ void handle_request(int sock_fd, const std::string& http_request, std::optional<
   if (method == "GET") {
     response = handle_get_requests(request_target, headers, maybe_directory);
   } else if (method == "POST") {
-    response = handle_get_requests(request_target, headers, maybe_directory);
+    std::string body = get_body(http_request, headers);
+    response = handle_post_requests(request_target, headers, body, maybe_directory);
   } else {
     response = "HTTP/1.1 404 Not Found\r\n\r\n";
   }
