@@ -9,6 +9,7 @@
 #include <netdb.h>
 #include <sstream>
 #include <vector>
+#include <unordered_map>
 
 int create_server_socket(int port) {
   int server_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -91,6 +92,47 @@ std::string extract_echo_message(const std::string& request_target) {
   return "";
 }
 
+std::unordered_map<std::string, std::string> extract_headers(const std::string& http_request) {
+  std::unordered_map<std::string, std::string> headers;
+
+  // Find the end of the headers section
+  size_t headers_end = http_request.find("\r\n\r\n");
+  if (headers_end == std::string::npos) {
+    std::cerr << "Invalid HTTP request format: no headers found.\n";
+    return headers;
+  }
+
+  // Extract headers substring
+  std::string headers_str = http_request.substr(0, headers_end);
+
+  // Split headers into lines
+  std::istringstream headers_stream(headers_str);
+  std::string line;
+  while (std::getline(headers_stream, line)) {
+    // Skip empty lines
+    if (line.empty() || line == "\r") continue;
+
+    // Find the separator ":"
+    size_t delimiter_pos = line.find(':');
+    if (delimiter_pos == std::string::npos) continue;
+
+    // Extract header name and value
+    std::string header_name = line.substr(0, delimiter_pos);
+    std::string header_value = line.substr(delimiter_pos + 1);
+
+    // Trim leading and trailing whitespaces
+    header_name.erase(header_name.find_last_not_of(" \t") + 1);
+    header_name.erase(0, header_name.find_first_not_of(" \t"));
+    header_value.erase(header_value.find_last_not_of(" \t") + 1);
+    header_value.erase(0, header_value.find_first_not_of(" \t"));
+
+    // Insert header into the map
+    headers[header_name] = header_value;
+  }
+
+  return headers;
+}
+
 void handle_request(int sock_fd, const std::string& http_request) {
   if (http_request.empty()) {
     std::cerr << "Failed to extract request target" << std::endl;
@@ -98,6 +140,12 @@ void handle_request(int sock_fd, const std::string& http_request) {
   }
 
   std::string request_target = extract_request_target(http_request);
+
+  auto headers = extract_headers(http_request);
+
+  for (const auto& [key, value] : headers) {
+    std::cout << key << ": " << value << std::endl;
+  }
 
   if (request_target.empty()) {
     std::cerr << "Failed to extract request target" << std::endl;
