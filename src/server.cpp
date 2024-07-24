@@ -165,6 +165,12 @@ void handle_request(int sock_fd, const std::string& http_request) {
                "Content-Type: text/plain\r\n"
                "Content-Length: " + std::to_string(message.length()) + "\r\n\r\n" +
                message;
+  } else if (request_target == "/user-agent") {
+    std::string message = headers["User-Agent"];
+    response = "HTTP/1.1 200 OK\r\n"
+               "Content-Type: text/plain\r\n"
+               "Content-Length: " + std::to_string(message.length()) + "\r\n\r\n" +
+               message;
   } else {
     response = "HTTP/1.1 404 Not Found\r\n\r\n";
   }
