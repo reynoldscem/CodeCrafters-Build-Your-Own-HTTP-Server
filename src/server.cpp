@@ -12,6 +12,9 @@
 #include <unordered_map>
 #include <thread>
 
+#include <optional>
+#include <CLI/CLI.hpp>
+
 int create_server_socket(int port) {
   int server_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (server_fd < 0) {
@@ -185,6 +188,18 @@ void handle_request(int sock_fd, const std::string& http_request) {
 int main(int argc, char **argv) {
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
+
+  CLI::App app{"Simple Webserver"};
+
+  std::optional<std::string> directory;
+  app.add_option("--directory", directory, "Directory from which to serve files");
+
+  CLI11_PARSE(app, argc, argv);
+
+  if (directory)
+      std::cout << "Directory: " << *directory << std::endl;
+  else
+      std::cout << "Directory unset!" << std::endl;
 
   int port = 4221;
   int backlog = 5;
