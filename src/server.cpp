@@ -312,6 +312,44 @@ std::string get_body(const std::string& http_request, const std::unordered_map<s
   }
 }
 
+void check_and_add_content_encoding(std::unordered_map<std::string, std::string>& headers,
+                                    std::unordered_map<std::string, std::string>& response_headers) {
+  auto it = headers.find("Accept-Encoding");
+  if (it != headers.end() && it->second.find("gzip") != std::string::npos) {
+    response_headers["Content-Encoding"] = "gzip";
+  }
+}
+
+std::string get_first_line(const std::string& http_response) {
+  size_t end_of_first_line = http_response.find("\r\n");
+  if (end_of_first_line != std::string::npos) {
+    return http_response.substr(0, end_of_first_line);
+  } else {
+    return "";
+  }
+}
+
+std::string build_http_response(
+        const std::string& first_line,
+        const std::unordered_map<std::string, std::string>& headers,
+        const std::string& body
+    ) {
+
+  std::stringstream response;
+
+  response << first_line << "\r\n";
+
+  for (const auto& header : headers) {
+    response << header.first << ": " << header.second << "\r\n";
+  }
+
+  response << "\r\n";
+
+  response << body;
+
+  return response.str();
+}
+
 void handle_request(int sock_fd, const std::string& http_request, std::optional<std::string> maybe_directory) {
   if (http_request.empty()) {
     std::cerr << "Failed to extract request target" << std::endl;
@@ -343,6 +381,13 @@ void handle_request(int sock_fd, const std::string& http_request, std::optional<
   } else {
     response = "HTTP/1.1 404 Not Found\r\n\r\n";
   }
+  auto response_headers = extract_headers(response);
+
+  std::string first_line = get_first_line(response);
+  check_and_add_content_encoding(headers, response_headers);
+  std::string body = get_body(response, response_headers);
+
+  response = build_http_response(first_line, response_headers, body);
 
   // Send the response message
   if (send(sock_fd, response.c_str(), response.size(), 0) < 0) {
