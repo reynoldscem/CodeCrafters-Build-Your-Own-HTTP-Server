@@ -17,6 +17,8 @@
 
 #include <filesystem>
 
+#include <tuple>
+
 namespace fs = std::filesystem;
 
 int create_server_socket(int port) {
@@ -58,17 +60,16 @@ bool start_listening(int server_fd, int backlog) {
   return true;
 }
 
-std::string extract_request_target(const std::string& http_request) {
+std::tuple<std::string, std::string> parse_route(const std::string& http_request) {
     std::istringstream request_stream(http_request);
     std::string method, request_target, http_version;
 
     // Parse the first line of the HTTP request
     if (request_stream >> method >> request_target >> http_version) {
-        return request_target;
+        return std::make_tuple(method, request_target);
     }
 
-    // If parsing failed, return an empty string
-    return "";
+    return std::make_tuple("", "");
 }
 
 std::string receive_data(int sockfd, sockaddr_in& client_addr, socklen_t& client_addr_len) {
@@ -206,7 +207,7 @@ void handle_request(int sock_fd, const std::string& http_request, std::optional<
     return;
   }
 
-  std::string request_target = extract_request_target(http_request);
+  auto [method, request_target] = parse_route(http_request);
 
   auto headers = extract_headers(http_request);
 
@@ -219,6 +220,7 @@ void handle_request(int sock_fd, const std::string& http_request, std::optional<
     return;
   }
 
+  std::cout << "Method: " << method << std::endl;
   std::cout << "Request Target: " << request_target << std::endl;
 
   // Construct the response message
