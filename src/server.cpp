@@ -360,7 +360,7 @@ std::string compress_body(const std::string& str,
     z_stream zs;                        // z_stream is zlib's control structure
     memset(&zs, 0, sizeof(zs));
 
-    if (deflateInit(&zs, compressionlevel) != Z_OK)
+    if (deflateInit2(&zs, compressionlevel, Z_DEFLATED, 15 | 16, 8, Z_DEFAULT_STRATEGY) != Z_OK)
         throw(std::runtime_error("deflateInit failed while compressing."));
 
     zs.next_in = (Bytef*)str.data();
@@ -473,11 +473,12 @@ void handle_request(int sock_fd, const std::string& http_request, std::optional<
     printHex(body);
     std::cout << "body: " << body << std::endl;
 
-    std::vector<unsigned char> hexBytes = {0x1f, 0x8b, 0x08}; 
+    std::vector<unsigned char> hexBytes = {0x1f, 0x8b, 0x8}; 
 
     std::string gzip_preamble(hexBytes.begin(), hexBytes.end());
 
-    body = gzip_preamble + body;
+    // body = gzip_preamble + body;
+    printHex(body);
     response_headers["Content-Length"] = std::to_string(body.length());
 
     std::stringstream response;
