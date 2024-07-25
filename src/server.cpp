@@ -141,10 +141,10 @@ std::unordered_map<std::string, std::string> extract_headers(const std::string& 
     std::string header_value = line.substr(delimiter_pos + 1);
 
     // Trim leading and trailing whitespaces
-    header_name.erase(header_name.find_last_not_of(" \t") + 1);
-    header_name.erase(0, header_name.find_first_not_of(" \t"));
-    header_value.erase(header_value.find_last_not_of(" \t") + 1);
-    header_value.erase(0, header_value.find_first_not_of(" \t"));
+    header_name.erase(header_name.find_last_not_of(" \t\r\n") + 1);
+    header_name.erase(0, header_name.find_first_not_of(" \t\r\n"));
+    header_value.erase(header_value.find_last_not_of(" \t\r\n") + 1);
+    header_value.erase(0, header_value.find_first_not_of(" \t\r\n"));
 
     // Insert header into the map
     headers[header_name] = header_value;
@@ -405,6 +405,30 @@ void printHex(const std::string& input) {
     std::cout << oss.str() << std::endl;
 }
 
+std::string escapeString(const std::string& str) {
+    std::ostringstream oss;
+
+    for (char ch : str) {
+        switch (ch) {
+            case '\n': oss << "\\n"; break;
+            case '\r': oss << "\\r"; break;
+            case '\t': oss << "\\t"; break;
+            case '\\': oss << "\\\\"; break;
+            case '\"': oss << "\\\""; break;
+            case '\'': oss << "\\\'"; break;
+            default:
+                // For non-printable characters, use \xNN or \uNNNN notation
+                if (std::isprint(static_cast<unsigned char>(ch))) {
+                    oss << ch;
+                } else {
+                    oss << "\\x" << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(static_cast<unsigned char>(ch));
+                }
+        }
+    }
+
+    return oss.str();
+}
+
 void handle_request(int sock_fd, const std::string& http_request, std::optional<std::string> maybe_directory) {
   if (http_request.empty()) {
     std::cerr << "Failed to extract request target" << std::endl;
@@ -462,6 +486,7 @@ void handle_request(int sock_fd, const std::string& http_request, std::optional<
 
     for (const auto& header : response_headers) {
       response << header.first << ": " << header.second << "\r\n";
+      std::cout << escapeString(header.second) << std::endl;
     }
 
     response << "\r\n";
@@ -470,13 +495,13 @@ void handle_request(int sock_fd, const std::string& http_request, std::optional<
 
     std::string initial_string = response.str();
 
-    std::cout << "Response: " << initial_string << std::endl;
+    std::cout << "Response: " << std::endl << initial_string << std::endl;
 
     send(sock_fd, initial_string.c_str(), initial_string.size(), 0);
   } else {
     response = build_http_response(first_line, response_headers, body);
 
-    std::cout << response << std::endl;
+    std::cout << response;
 
     // Send the response message
     if (send(sock_fd, response.c_str(), response.size(), 0) < 0) {
