@@ -395,6 +395,16 @@ std::string compress_body(const std::string& str,
     return outstring;
 }
 
+void printHex(const std::string& input) {
+    std::ostringstream oss;
+
+    for (unsigned char ch : input) {
+        oss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(ch);
+    }
+
+    std::cout << oss.str() << std::endl;
+}
+
 void handle_request(int sock_fd, const std::string& http_request, std::optional<std::string> maybe_directory) {
   if (http_request.empty()) {
     std::cerr << "Failed to extract request target" << std::endl;
@@ -431,11 +441,19 @@ void handle_request(int sock_fd, const std::string& http_request, std::optional<
   std::string first_line = get_first_line(response);
   bool compress = check_and_add_content_encoding(headers, response_headers);
   std::string body = get_body(response, response_headers);
+  std::cout << body.length() << std::endl;
 
   if (compress) {
     std::cout << "body: " << body << std::endl;
     body = compress_body(body);
+    printHex(body);
     std::cout << "body: " << body << std::endl;
+
+    std::vector<unsigned char> hexBytes = {0x1f, 0x8b, 0x08}; 
+
+    std::string gzip_preamble(hexBytes.begin(), hexBytes.end());
+
+    body = gzip_preamble + body;
     response_headers["Content-Length"] = std::to_string(body.length());
 
     std::stringstream response;
@@ -448,10 +466,13 @@ void handle_request(int sock_fd, const std::string& http_request, std::optional<
 
     response << "\r\n";
 
+    response << body;
+
     std::string initial_string = response.str();
 
+    std::cout << "Response: " << initial_string << std::endl;
+
     send(sock_fd, initial_string.c_str(), initial_string.size(), 0);
-    send(sock_fd, body.c_str(), body.size(), 0);
   } else {
     response = build_http_response(first_line, response_headers, body);
 
